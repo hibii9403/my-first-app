@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Habit — Daily Tracker</title>
+<style>
+  /* ============ Tokens ============ */
+  :root {
+    --bg:        #0a0b0e;
+    --surface:   #121419;
+    --surface-2: #171a21;
+    --line:      rgba(255, 255, 255, .07);
+    --line-hi:   rgba(255, 255, 255, .14);
+    --text:      #e8eaf0;
+    --muted:     #8b91a1;
+    --dim:       #4d5364;
+    --accent-a:  #6ee7b7;
+    --accent-b:  #60a5fa;
+    --ease:      cubic-bezier(.22, 1, .36, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { min-height: 100%; }
+
+  body {
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    padding: 52px 20px 90px;
+    overflow-x: hidden;
+  }
+
+  /* Ambient glow behind everything */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(620px 420px at 18% -8%,  rgba(110, 231, 183, .11), transparent 70%),
+      radial-gradient(700px 520px at 92% 6%,   rgba(96, 165, 250, .09), transparent 72%),
+      radial-gradient(500px 400px at 60% 105%, rgba(196, 181, 253, .06), transparent 70%);
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  /* ============ Header ============ */
+  .head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 4px;
+    margin-bottom: 24px;
+  }
+
+  .eyebrow {
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -.025em;
+    margin-top: 7px;
+    line-height: 1;
+  }
+
+  .score {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -.04em;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1;
+  }
+
+  /* ============ Cards ============ */
+  .card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .012));
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+
+  /* ============ Overall progress ============ */
+  .overall {
+    padding: 18px 20px 20px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(6px);
+  }
+
+  .overall-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 13px;
+  }
+
+  .overall-top .label {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    color: var(--muted);
+  }
+
+  .overall-top .value {
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============ Bars ============ */
+  .bar {
+    height: 8px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, .06);
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 99px;
+    transition: width .55s var(--ease);
+  }
+
+  #overallFill {
+    background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+    box-shadow: 0 0 18px -4px rgba(96, 165, 250, .75);
+  }
+
+  .bar.small { height: 6px; }
+
+  /* ============ Habit card ============ */
+  .habit {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 14px;
+    padding: 15px 16px 15px 18px;
+    margin-bottom: 10px;
+    transition: border-color .25s ease, transform .25s var(--ease),
+                opacity .22s ease, background .25s ease;
+  }
+
+  .habit:hover {
+    border-color: var(--line-hi);
+    transform: translateY(-1px);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .015));
+  }
+
+  .habit.removing {
+    opacity: 0;
+    transform: translateX(14px) scale(.97);
+  }
+
+  .habit.in { animation: cardIn .4s var(--ease) both; }
+
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---- Custom checkbox ---- */
+  .check {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, .18);
+    background: transparent;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background .25s ease, border-color .25s ease,
+                box-shadow .35s ease, transform .12s ease;
+    user-select: none;
+  }
+
+  .check:hover { border-color: rgba(255, 255, 255, .38); }
+  .check:active { transform: scale(.9); }
+
+  .check svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: #0a0b0e;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    transition: stroke-dashoffset .28s ease .04s;
+  }
+
+  .habit.done .check {
+    background: var(--c);
+    border-color: var(--c);
+    box-shadow: 0 0 20px -5px var(--c);
+  }
+
+  .habit.done .check svg { stroke-dashoffset: 0; }
+
+  /* ---- Habit body ---- */
+  .body { min-width: 0; }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .name {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color .25s ease;
+  }
+
+  .habit.done .name {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: rgba(255, 255, 255, .22);
+    text-decoration-thickness: 1.5px;
+  }
+
+  .streak {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    opacity: .9;
+  }
+
+  /* ---- Week dots ---- */
+  .dots {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+  }
+
+  .dot {
+    flex: 1;
+    height: 4px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, .07);
+    transition: background .35s ease;
+  }
+
+  .dot.on { background: var(--c); }
+
+  /* ---- Delete ---- */
+  .del {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 19px;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    transition: opacity .2s ease, background .2s ease, color .2s ease;
+  }
+
+  .habit:hover .del,
+  .del:focus-visible { opacity: 1; }
+
+  .del:hover {
+    background: rgba(248, 113, 113, .13);
+    color: #f87171;
+  }
+
+  @media (hover: none) {
+    .del { opacity: .55; }
+  }
+
+  /* ============ Add form ============ */
+  .add {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .add input {
+    flex: 1;
+    min-width: 0;
+    padding: 14px 16px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    outline: none;
+    transition: border-color .2s ease, background .2s ease;
+  }
+
+  .add input::placeholder { color: var(--dim); }
+
+  .add input:focus {
+    border-color: rgba(110, 231, 183, .45);
+    background: var(--surface-2);
+  }
+
+  .add button {
+    width: 50px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    font-size: 22px;
+    line-height: 1;
+    color: #a7f3d0;
+    cursor: pointer;
+    border-radius: 12px;
+    border: 1px solid rgba(110, 231, 183, .3);
+    background: linear-gradient(135deg, rgba(110, 231, 183, .16), rgba(96, 165, 250, .16));
+    transition: transform .15s ease, border-color .2s ease, background .2s ease;
+  }
+
+  .add button:hover {
+    border-color: rgba(110, 231, 183, .6);
+    background: linear-gradient(135deg, rgba(110, 231, 183, .3), rgba(96, 165, 250, .3));
+  }
+
+  .add button:active { transform: scale(.94); }
+
+  /* ============ Misc ============ */
+  .empty {
+    padding: 44px 20px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--muted);
+    border: 1px dashed rgba(255, 255, 255, .1);
+    border-radius: 16px;
+  }
+
+  .hint {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 11.5px;
+    letter-spacing: .03em;
+    color: var(--dim);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(110, 231, 183, .75);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      transition-duration: .001ms !important;
+    }
+  }
+
+  @media (max-width: 420px) {
+    h1 { font-size: 26px; }
+    .score { font-size: 26px; }
+    body { padding-top: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="head">
+    <div>
+      <p class="eyebrow" id="dateLabel">—</p>
+      <h1>Today</h1>
+    </div>
+    <div class="score" id="scorePct">0%</div>
+  </header>
+
+  <section class="card overall" aria-label="Daily progress">
+    <div class="overall-top">
+      <span class="label">Daily progress</span>
+      <span class="value" id="overallText">0 / 0</span>
+    </div>
+    <div class="bar">
+      <div class="bar-fill" id="overallFill"></div>
+    </div>
+  </section>
+
+  <main id="list" class="list"></main>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="addInput" type="text" placeholder="Add a new habit…" maxlength="40"
+           aria-label="New habit name" />
+    <button type="submit" aria-label="Add habit">+</button>
+  </form>
+
+  <p class="hint">Tap a circle to check in · saved locally in your browser</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= Constants ================= */
+  const STORE_KEY = 'minimal-habit-tracker-v1';
+  const PALETTE = ['#6ee7b7', '#7dd3fc', '#c4b5fd', '#fcd34d',
+                   '#f9a8d4', '#5eead4', '#fca5a5', '#a3e635'];
+
+  /* ================= Element refs ================= */
+  const listEl      = document.getElementById('list');
+  const overallFill = document.getElementById('overallFill');
+  const overallText = document.getElementById('overallText');
+  const scorePct    = document.getElementById('scorePct');
+  const dateLabel   = document.getElementById('dateLabel');
+  const addForm     = document.getElementById('addForm');
+  const addInput    = document.getElementById('addInput');
+
+  /* ================= Date helpers ================= */
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const todayKey = () => iso(new Date());
+
+  function startOfWeek(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday start
+    return d;
+  }
+
+  function formatDate() {
+    return new Date().toLocaleDateString(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric'
+    });
+  }
+
+  /* ================= State ================= */
+  let TODAY = todayKey();
+  let habits = load();
+  let firstRender = true;
+  const refs = new Map(); // habitId -> { el, check, fill, dots, streakEl }
+
+  function uid() {
+    return (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'h' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function normalize(h) {
+    return {
+      id:    h && h.id ? String(h.id) : uid(),
+      name:  String((h && h.name) || 'Habit').slice(0, 40),
+      color: (h && PALETTE.indexOf(h.color) !== -1) ? h.color
+             : PALETTE[Math.floor(Math.random() * PALETTE.length)],
+      done:  (h && h.done && typeof h.done === 'object') ? h.done : {}
+    };
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map(normalize);
+      }
+    } catch (e) { /* corrupted storage — fall through to seed */ }
+
+    return [
+      { id: uid(), name: 'Drink 2L of water',    color: PALETTE[0], done: {} },
+      { id: uid(), name: 'Read 20 pages',        color: PALETTE[1], done: {} },
+      { id: uid(), name: 'Move for 30 minutes',  color: PALETTE[2], done: {} }
+    ];
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(habits)); }
+    catch (e) { /* storage full / disabled — ignore */ }
+  }
+
+  /* ================= Logic ================= */
+  function streakOf(habit) {
+    let n = 0;
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    if (!habit.done[iso(d)]) d.setDate(d.getDate() - 1); // today not done yet → count back from yesterday
+    while (habit.done[iso(d)] && n < 3650) {
+      n++;
+      d.setDate(d.getDate() - 1);
+    }
+    return n;
+  }
+
+  function toggle(id) {
+    const h = habits.find(x => x.id === id);
+    if (!h) return;
+    if (h.done[TODAY]) delete h.done[TODAY];
+    else h.done[TODAY] = true;
+    save();
+    updateCard(h);
+    updateOverall();
+  }
+
+  function removeHabit(id) {
+    const r = refs.get(id);
+    if (r) {
+      r.el.classList.add('removing');
+      r.el.style.pointerEvents = 'none';
+    }
+    setTimeout(() => {
+      habits = habits.filter(h => h.id !== id);
+      save();
+      renderAll();
+    }, 200);
+  }
+
+  /* ================= Rendering ================= */
+  function buildCard(habit, index) {
+    const el = document.createElement('article');
+    el.className = 'habit card';
+    el.dataset.id = habit.id;
+    el.style.setProperty('--c', habit.color);
+
+    /* checkbox */
+    const check = document.createElement('button');
+    check.type = 'button';
+    check.className = 'check';
+    check.setAttribute('role', 'checkbox');
+    check.setAttribute('aria-checked', 'false');
+    check.setAttribute('aria-label', 'Toggle ' + habit.name);
+    check.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>';
+
+    /* body */
+    const body = document.createElement('div');
+    body.className = 'body';
+
+    const row = document.createElement('div');
+    row.className = 'row';
+
+    const name = document.createElement('h3');
+    name.className = 'name';
+    name.textContent = habit.name;
+
+    const streakEl = document.createElement('span');
+    streakEl.className = 'streak';
+
+    row.append(name, streakEl);
+
+    const bar = document.createElement('div');
+    bar.className = 'bar small';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill';
+    fill.style.background = 'linear-gradient(90deg, ' + habit.color + '99, ' + habit.color + ')';
+    bar.appendChild(fill);
+
+    const dotsWrap = document.createElement('div');
+    dotsWrap.className = 'dots';
+    const dots = [];
+    for (let i = 0; i < 7; i++) {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dotsWrap.appendChild(dot);
+      dots.push(dot);
+    }
+
+    body.append(row, bar, dotsWrap);
+
+    /* delete */
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del';
+    del.setAttribute('aria-label', 'Delete ' + habit.name);
+    del.title = 'Delete';
+    del.innerHTML = '&times;';
+
+    el.append(check, body, del);
+
+    /* events */
+    check.addEventListener('click', () => toggle(habit.id));
+    del.addEventListener('click', () => removeHabit(habit.id));
+
+    if (firstRender) {
+      el.classList.add('in');
+      el.style.animationDelay = (index * 45) + 'ms';
+    }
+
+    refs.set(habit.id, { el, check, fill, dots, streakEl });
+    return el;
+  }
+
+  function updateCard(habit) {
+    const r = refs.get(habit.id);
+    if (!r) return;
+
+    const doneToday = !!habit.done[TODAY];
+    r.el.classList.toggle('done', doneToday);
+    r.check.setAttribute('aria-checked', String(doneToday));
+
+    /* weekly dots + per-habit progress bar */
+    const weekStart = startOfWeek(new Date());
+    let count = 0;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      const on = !!habit.done[iso(d)];
+      if (on) count++;
+      r.dots[i].classList.toggle('on', on);
+    }
+
+    r.fill.style.width = Math.round((count / 7) * 100) + '%';
+
+    /* streak */
+    const s = streakOf(habit);
+    r.streakEl.textContent = s > 0 ? '\uD83D\uDD25 ' + s : '';
+  }
+
+  function updateOverall() {
+    const total = habits.length;
+    const done = habits.reduce((acc, h) => acc + (h.done[TODAY] ? 1 : 0), 0);
+    const pct = total ? Math.round((done / total) * 100) : 0;
+
+    overallFill.style.width = pct + '%';
+    overallText.textContent = done + ' / ' + total;
+    scorePct.textContent = pct + '%';
+  }
+
+  function renderAll() {
+    listEl.textContent = '';
+    refs.clear();
+
+    if (habits.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No habits yet — add your first one below.';
+      listEl.appendChild(empty);
+    } else {
+      const frag = document.createDocumentFragment();
+      habits.forEach((h, i) => frag.appendChild(buildCard(h, i)));
+      listEl.appendChild(frag);
+    }
+
+    habits.forEach(updateCard);
+    updateOverall();
+    firstRender = false;
+  }
+
+  /* ================= Events ================= */
+  addForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const name = addInput.value.trim();
+    if (!name) return;
+
+    habits.push({
+      id: uid(),
+      name: name.slice(0, 40),
+      color: PALETTE[habits.length % PALETTE.length],
+      done: {}
+    });
+
+    addInput.value = '';
+    save();
+    renderAll();
+    addInput.focus();
+  });
+
+  /* Day rollover — keeps the UI honest if left open overnight */
+  setInterval(function () {
+    const now = todayKey();
+    if (now !== TODAY) {
+      TODAY = now;
+      dateLabel.textContent = formatDate();
+      renderAll();
+    }
+  }, 30000);
+
+  /* ================= Init ================= */
+  dateLabel.textContent = formatDate();
+  renderAll();
+})();
+</script>
+</body>
+</html>
